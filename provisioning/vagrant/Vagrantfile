@@ -1,0 +1,106 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+VAGRANTFILE_API_VERSION = "2"
+
+VM_BOX = "centos/7"
+USE_DOMAIN = true
+USE_STATIC_CONFIG = false
+DOMAIN_NAME = "local"
+IP_ADDRESS_RANGE = "192.168.100"
+HOSTNAME_PREFIX = "k"
+CLUSTER_NODES_COUNT = 3
+
+ENV['VAGRANT_NO_PARALLEL'] = 'yes'
+
+# Kubernetes Cluster static configuration
+kubernetes_nodes = {
+	"kmaster" => { 
+				"ip" => "192.168.100.101",
+				"cpus" => 1,
+				"mem" => 2048
+				},
+	"kworker1" => { 
+				"ip" => "192.168.100.102",
+				"cpus" => 1,
+				"mem" => 2048
+				},
+	"kworker2" => { 
+				"ip" => "192.168.100.103",
+				"cpus" => 1,
+				"mem" => 2048
+				}
+}
+
+Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
+
+	# Check if host manager plugin installed. If not installed use "vagrant plugin install vagrant-hostmanager" command to install it.
+	#unless Vagrant.has_plugin?("vagrant-hostmanager")
+	#	raise 'The Vagrant hostmanager plugin must be install prior to building this VM (vagrant plugin install vagrant-hostmanager)'
+	#end
+
+	# Enable plugin to update /etc/hosts file
+	#config.hostmanager.enabled = true
+	#config.hostmanager.manage_host = true
+
+	# Disable VB Guest Additions auto update
+	#if Vagrant.has_plugin?("vagrant-vbguest")
+	#	config.vbguest.auto_update = false
+	#end
+
+	config.vm.provision "shell", path: "scripts/k8s_bootstrap.sh"
+
+	if USE_STATIC_CONFIG
+		puts 'Static configuration TODO'
+	else
+		puts 'Creating ' + CLUSTER_NODES_COUNT.to_s + ' node(s) Kubernetes Cluster'
+	
+		# Kubernetes Master Node
+		master_ip = IP_ADDRESS_RANGE + ".100"
+		master_hostname = HOSTNAME_PREFIX + "master"
+		master_fqdn = master_hostname + "." + DOMAIN_NAME;
+		puts "Master host IP: " + master_ip
+		config.vm.define master_hostname do |masternode|
+			masternode.vm.box = VM_BOX
+			masternode.vm.hostname = master_fqdn
+			masternode.vm.network "private_network", ip: master_ip
+			masternode.vm.provider "virtualbox" do |v|
+				v.name = master_hostname
+				v.memory = 2048
+				v.cpus = 2
+			end
+
+			masternode.vm.provision "shell" do |s|
+				s.path = "scripts/k8s_bootstrap_master.sh"
+				s.args = [master_ip]
+			end
+			
+		end
+
+		# Kubernetes Worker Nodes
+		(1..CLUSTER_NODES_COUNT-1).each do |i|
+			worker_ip = IP_ADDRESS_RANGE + ".10#{i}"
+			worker_hostname = HOSTNAME_PREFIX + "worker#{i}"
+			worker_fqdn = worker_hostname + "." + DOMAIN_NAME;
+			config.vm.define worker_hostname do |workernode|
+				workernode.vm.box = VM_BOX
+				workernode.vm.hostname = worker_fqdn
+				workernode.vm.network "private_network", ip: worker_ip
+				workernode.vm.provider "virtualbox" do |v|
+					v.name = worker_hostname
+					v.memory = 1024
+					v.cpus = 1
+				end
+
+				workernode.vm.provision "shell" do |s|
+					s.path = "scripts/k8s_bootstrap_worker.sh"
+					s.args = [master_fqdn]
+				end
+
+			end
+
+		end
+
+	end
+
+end
