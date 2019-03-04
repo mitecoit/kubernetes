@@ -7,8 +7,8 @@ VM_BOX = "centos/7"
 USE_DOMAIN = true
 USE_STATIC_CONFIG = false
 DOMAIN_NAME = "local"
-IP_ADDRESS_RANGE = "192.168.100"
-HOSTNAME_PREFIX = "k"
+IP_ADDRESS_RANGE = "172.42.42"
+HOSTNAME_PREFIX = "kube"
 CLUSTER_NODES_COUNT = 3
 
 ENV['VAGRANT_NO_PARALLEL'] = 'yes'
@@ -53,13 +53,28 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 	if USE_STATIC_CONFIG
 		puts 'Static configuration TODO'
 	else
-		puts 'Creating ' + CLUSTER_NODES_COUNT.to_s + ' node(s) Kubernetes Cluster'
-	
+		puts 'Provisioning ' + CLUSTER_NODES_COUNT.to_s + ' node(s) Kubernetes Cluster'
+
+		hosts = []
+		(1..CLUSTER_NODES_COUNT).each do |i|
+			host_ip = IP_ADDRESS_RANGE + ".10#{i-1}"
+			host_hostname = HOSTNAME_PREFIX + (i == 1 ? "master" : "worker")
+			host_fqdn = host_hostname + "." + DOMAIN_NAME
+			hosts << "#{host_ip} #{host_fqdn} #{host_hostname}"
+		end
+
+		hosts_joined = hosts.join("\n")
+		
+		config.vm.provision "shell" do |s|
+			s.path = "scripts/k8s_bootstrap.sh"
+			s.args = [hosts_joined]
+		end
+
 		# Kubernetes Master Node
 		master_ip = IP_ADDRESS_RANGE + ".100"
 		master_hostname = HOSTNAME_PREFIX + "master"
-		master_fqdn = master_hostname + "." + DOMAIN_NAME;
-		puts "Master host IP: " + master_ip
+		master_fqdn = master_hostname + "." + DOMAIN_NAME
+		#puts "Master host IP: " + master_ip
 		config.vm.define master_hostname do |masternode|
 			masternode.vm.box = VM_BOX
 			masternode.vm.hostname = master_fqdn

@@ -1,77 +1,77 @@
 #!/bin/bash
 
 # Update hosts file
-echo "[TASK 1] Update /etc/hosts file"
-cat >>/etc/hosts<<EOF
-192.168.100.100 kmaster.localhost kmaster
-192.168.100.101 kworker1.localhost kworker1
-192.168.100.102 kworker2.localhost kworker2
-EOF
+echo "[TASK 1] Update hosts file"
+echo "$1" >> /etc/hosts
 
-# Install docker from Docker-ce repository
+# Install docker
 echo "[TASK 2] Install docker container engine"
-yum install -y -q yum-utils device-mapper-persistent-data lvm2 > /dev/null 2>&1
-yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo > /dev/null 2>&1
-yum install -y -q docker-ce >/dev/null 2>&1
-
-# Enable docker service
-echo "[TASK 3] Enable and start docker service"
-systemctl enable docker >/dev/null 2>&1
+# Update the package database
+yum -y check-update
+yum install -y -q yum-utils device-mapper-persistent-data lvm2
+#yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo > /dev/null 2>&1
+#yum install -y -q docker-ce >/dev/null 2>&1
+# Add the official Docker repository, download the latest version of Docker, and install it
+curl -fsSL https://get.docker.com/ | sh >/dev/null 2>&1
+# Enable the Docker daemon to start at every server reboot
+systemctl enable docker
+# Start the Docker daemon
 systemctl start docker
+# Add your username to the docker group. To avoid typing sudo whenever user runs the docker command
+usermod -aG docker $(whoami)
 
 # Disable SELinux
-echo "[TASK 4] Disable SELinux"
+echo "[TASK 3] Disable SELinux"
+# Set SELinux in permissive mode (effectively disabling it)
 setenforce 0
-sed -i --follow-symlinks 's/^SELINUX=enforcing/SELINUX=disabled/' /etc/sysconfig/selinux
+sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
 
-# Stop and disable firewalld
-echo "[TASK 5] Stop and Disable firewalld"
-systemctl disable firewalld >/dev/null 2>&1
+# Disable firewalld
+echo "[TASK 4] Disable firewalld"
+# Stop the firewalld service
 systemctl stop firewalld
+# Disable the firewalld service to start automatically on system boot
+systemctl disable firewalld >/dev/null 2>&1
+# Mask the firewalld service which will prevent the firewall from being started by other services
+systemctl mask --now firewalld
 
-# Add sysctl settings
-echo "[TASK 6] Add sysctl settings"
-cat >>/etc/sysctl.d/kubernetes.conf<<EOF
+# Update IPtables
+echo "[TASK 5] Update IPtables"
+# Ensure traffic being routed correctly
+cat <<EOF >  /etc/sysctl.d/kubernetes.conf
 net.bridge.bridge-nf-call-ip6tables = 1
 net.bridge.bridge-nf-call-iptables = 1
 EOF
 sysctl --system >/dev/null 2>&1
 
-# Disable swap
-echo "[TASK 7] Disable and turn off SWAP"
+# Disable SWAP
+echo "[TASK 6] Disable SWAP"
 sed -i '/swap/d' /etc/fstab
 swapoff -a
 
-# Add yum repo file for Kubernetes
-echo "[TASK 8] Add yum repo file for kubernetes"
-cat >>/etc/yum.repos.d/kubernetes.repo<<EOF
+# Install Kubernetes
+echo "[TASK 7] Install Kubernetes"
+cat <<EOF > /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
 baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-x86_64
 enabled=1
 gpgcheck=1
 repo_gpgcheck=1
-gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg
-        https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+gpgkey=https://packages.cloud.google.com/yum/doc/yum-key.gpg https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+exclude=kube*
 EOF
+yum install -y -q kubelet kubeadm kubectl --disableexcludes=kubernetes >/dev/null 2>&1
+systemctl enable --now kubelet >/dev/null 2>&1
 
-# Install Kubernetes
-echo "[TASK 9] Install Kubernetes (kubeadm, kubelet and kubectl)"
-yum install -y -q kubeadm kubelet kubectl >/dev/null 2>&1
-
-# Start and Enable kubelet service
-echo "[TASK 10] Enable and start kubelet service"
-systemctl enable kubelet >/dev/null 2>&1
-systemctl start kubelet >/dev/null 2>&1
-
-# Enable ssh password authentication
-echo "[TASK 11] Enable ssh password authentication"
+# Enable SSH password authentication
+echo "[TASK 8] Enable SSH password authentication"
 sed -i 's/^PasswordAuthentication no/PasswordAuthentication yes/' /etc/ssh/sshd_config
 systemctl reload sshd
 
 # Set Root password
-echo "[TASK 12] Set root password"
+echo "[TASK 9] Set root password"
 echo "kubeadmin" | passwd --stdin root >/dev/null 2>&1
 
 # Update vagrant user's bashrc file
-echo "export TERM=xterm" >> /etc/bashrc
+echo "export TERM=xterm-256color" >> /etc/bashrc
