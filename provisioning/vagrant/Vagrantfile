@@ -48,8 +48,6 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 	#	config.vbguest.auto_update = false
 	#end
 
-	config.vm.provision "shell", path: "scripts/k8s_bootstrap.sh"
-
 	if USE_STATIC_CONFIG
 		puts 'Static configuration TODO'
 	else
