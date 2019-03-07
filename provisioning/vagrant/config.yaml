@@ -1,0 +1,85 @@
+﻿---
+# | ----------------------------------------------------------------------------
+# | Default configuration
+# | ----------------------------------------------------------------------------
+local_domain  : &local_domain    'local'
+vm_private_ip : &vm_private_ip      '10.10.10.10'
+vm_name       : &vm_name    'centos7'
+vm_mem        : &vm_mem     '1024' # auto, 1024
+vm_cpus       : &vm_cpus    '1' # auto, 1
+vm_box        : &vm_box     'centos/7'
+
+# | ----------------------------------------------------------------------------
+# | Cluster configuration mode (simple, extended) 
+# | ----------------------------------------------------------------------------
+cluster_config_mode : simple
+
+# | ----------------------------------------------------------------------------
+# | Cluster domain 
+# | ----------------------------------------------------------------------------
+cluster_domain : *local_domain
+
+# | ----------------------------------------------------------------------------
+# | Cluster simple configuration
+# | ----------------------------------------------------------------------------
+
+cluster_size : 3
+cluster_ip_range : "172.42.42"
+vm_mw_box : *vm_box
+vm_mw_box_check_update : false
+vm_hostname_prefix : "kube"
+vm_master_cpus : 2
+vm_master_mem : 2048
+vm_worker_cpus : 1
+vm_worker_mem : 1024
+
+# | ----------------------------------------------------------------------------
+# | Cluster extended configuration
+# | ----------------------------------------------------------------------------
+hosts:
+  - name               : "kmaster"
+    box                : *vm_box
+    box_check_update   : false
+    mem                : 2048
+    cpus               : 2
+    # | Configure networking
+    private_network :
+      ip_private       : "192.168.100.101"
+    public_network :
+    # | Configure Port Forwarding
+    ports :
+    # | Configure Synced folders
+    sync_dir :
+    # |  Bash provisioning
+    bash             : scripts/k8s_bootstrap_master.sh
+  - name               : "kworker1"
+    box                : *vm_box
+    box_check_update   : false
+    mem                : 1024
+    cpus               : 1
+    # | Configure networking
+    private_network :
+      ip_private       : "192.168.100.102"
+    public_network :
+    # | Configure Port Forwarding
+    ports :
+    # | Configure Synced folders
+    sync_dir :
+    # |  Bash provisioning
+    bash             : scripts/k8s_bootstrap_worker.sh
+  - name               : "kworker2"
+    box                : *vm_box
+    box_check_update   : false
+    mem                : 1024
+    cpus               : 1
+    # | Configure networking
+    private_network :
+      ip_private       : "192.168.100.103"
+    public_network :
+    # | Configure Port Forwarding
+    ports :
+    # | Configure Synced folders
+    sync_dir :
+    # |  Bash provisioning
+    bash             : scripts/k8s_bootstrap_worker.sh
+# ----------------------------------------------------------------------------

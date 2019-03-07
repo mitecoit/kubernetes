@@ -1,63 +1,47 @@
 # -*- mode: ruby -*-
 # vi: set ft=ruby :
 
+# | Require YAML module
+require 'yaml'
+
+# | Get dir path
+dir = File.dirname(File.expand_path(__FILE__))
+
+# | Read YAML file
+config_yaml = YAML.load_file("#{dir}/config.yaml")
+
+$domain = config_yaml["cluster_domain"]
+
+$cluster_config_mode = config_yaml["cluster_config_mode"]
+
 VAGRANTFILE_API_VERSION = "2"
-
-VM_BOX = "centos/7"
-USE_DOMAIN = true
-USE_STATIC_CONFIG = false
-DOMAIN_NAME = "local"
-IP_ADDRESS_RANGE = "172.42.42"
-HOSTNAME_PREFIX = "kube"
-CLUSTER_NODES_COUNT = 3
-
-ENV['VAGRANT_NO_PARALLEL'] = 'yes'
-
-# Kubernetes Cluster static configuration
-kubernetes_nodes = {
-	"kmaster" => { 
-				"ip" => "192.168.100.101",
-				"cpus" => 1,
-				"mem" => 2048
-				},
-	"kworker1" => { 
-				"ip" => "192.168.100.102",
-				"cpus" => 1,
-				"mem" => 2048
-				},
-	"kworker2" => { 
-				"ip" => "192.168.100.103",
-				"cpus" => 1,
-				"mem" => 2048
-				}
-}
 
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 
-	# Check if host manager plugin installed. If not installed use "vagrant plugin install vagrant-hostmanager" command to install it.
-	#unless Vagrant.has_plugin?("vagrant-hostmanager")
-	#	raise 'The Vagrant hostmanager plugin must be install prior to building this VM (vagrant plugin install vagrant-hostmanager)'
-	#end
 
-	# Enable plugin to update /etc/hosts file
-	#config.hostmanager.enabled = true
-	#config.hostmanager.manage_host = true
+	if $cluster_config_mode == "simple"
 
-	# Disable VB Guest Additions auto update
-	#if Vagrant.has_plugin?("vagrant-vbguest")
-	#	config.vbguest.auto_update = false
-	#end
+		puts 'Creating ' + config_yaml["cluster_size"].to_s + ' node(s) Kubernetes Cluster'
+	
+		# Check if host manager plugin installed. If not installed use "vagrant plugin install vagrant-hostmanager" command to install it.
+		#unless Vagrant.has_plugin?("vagrant-hostmanager")
+		#	raise 'The Vagrant hostmanager plugin must be install prior to building this VM (vagrant plugin install vagrant-hostmanager)'
+		#end
 
-	if USE_STATIC_CONFIG
-		puts 'Static configuration TODO'
-	else
-		puts 'Provisioning ' + CLUSTER_NODES_COUNT.to_s + ' node(s) Kubernetes Cluster'
+		# Enable plugin to update /etc/hosts file
+		#config.hostmanager.enabled = true
+		#config.hostmanager.manage_host = true
+
+		# Disable VB Guest Additions auto update
+		if Vagrant.has_plugin?("vagrant-vbguest")
+			config.vbguest.auto_update = false
+		end
 
 		hosts = []
-		(1..CLUSTER_NODES_COUNT).each do |i|
-			host_ip = IP_ADDRESS_RANGE + ".10#{i-1}"
-			host_hostname = HOSTNAME_PREFIX + (i == 1 ? "master" : "worker")
-			host_fqdn = host_hostname + "." + DOMAIN_NAME
+		(1..config_yaml["cluster_size"]).each do |i|
+			host_ip = config_yaml["cluster_ip_range"] + ".10#{i-1}"
+			host_hostname = config_yaml["vm_hostname_prefix"] + (i == 1 ? "master" : "worker")
+			host_fqdn = host_hostname + "." + config_yaml["cluster_domain"]
 			hosts << "#{host_ip} #{host_fqdn} #{host_hostname}"
 		end
 
@@ -69,18 +53,17 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 		end
 
 		# Kubernetes Master Node
-		master_ip = IP_ADDRESS_RANGE + ".100"
-		master_hostname = HOSTNAME_PREFIX + "master"
-		master_fqdn = master_hostname + "." + DOMAIN_NAME
-		#puts "Master host IP: " + master_ip
+		master_ip = config_yaml["cluster_ip_range"] + ".100"
+		master_hostname = config_yaml["vm_hostname_prefix"] + "master"
+		master_fqdn = master_hostname + "." + config_yaml["cluster_domain"]
 		config.vm.define master_hostname do |masternode|
-			masternode.vm.box = VM_BOX
+			masternode.vm.box = config_yaml["vm_mw_box"]
 			masternode.vm.hostname = master_fqdn
 			masternode.vm.network "private_network", ip: master_ip
 			masternode.vm.provider "virtualbox" do |v|
 				v.name = master_hostname
-				v.memory = 2048
-				v.cpus = 2
+				v.memory = config_yaml["vm_master_mem"]
+				v.cpus = config_yaml["vm_master_cpus"]
 			end
 
 			masternode.vm.provision "shell" do |s|
@@ -91,18 +74,18 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 		end
 
 		# Kubernetes Worker Nodes
-		(1..CLUSTER_NODES_COUNT-1).each do |i|
-			worker_ip = IP_ADDRESS_RANGE + ".10#{i}"
-			worker_hostname = HOSTNAME_PREFIX + "worker#{i}"
-			worker_fqdn = worker_hostname + "." + DOMAIN_NAME;
+		(1..config_yaml["cluster_size"]-1).each do |i|
+			worker_ip = config_yaml["cluster_ip_range"] + ".10#{i}"
+			worker_hostname = config_yaml["vm_hostname_prefix"] + "worker#{i}"
+			worker_fqdn = worker_hostname + "." + config_yaml["cluster_domain"];
 			config.vm.define worker_hostname do |workernode|
-				workernode.vm.box = VM_BOX
+				workernode.vm.box = config_yaml["vm_mw_box"]
 				workernode.vm.hostname = worker_fqdn
 				workernode.vm.network "private_network", ip: worker_ip
 				workernode.vm.provider "virtualbox" do |v|
 					v.name = worker_hostname
-					v.memory = 1024
-					v.cpus = 1
+					v.memory = config_yaml["vm_worker_mem"]
+					v.cpus = config_yaml["vm_worker_cpus"]
 				end
 
 				workernode.vm.provision "shell" do |s|
@@ -113,7 +96,178 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
 			end
 
 		end
-
+	
 	end
 
+	if $cluster_config_mode == "extended"
+		
+		config_yaml["hosts"].each do |host|
+		
+			config.vm.define host["name"] do |node|
+
+				node.vm.box = host["box"]
+				node.vm.hostname = host["name"] + "." + $domain
+
+				if host["box_version"]
+					node.vm.box_version = host["box_version"]
+				end
+
+				if host["box_check_update"]
+					node.vm.box_check_update = host["box_check_update"]
+				end
+
+				node.vm.provider "virtualbox" do |vb|
+					vb.name = host["name"]
+
+					if host["gui"]
+						vb.gui = host["gui"]
+					end
+
+					vb.customize ["modifyvm", :id, "--usb", "off"]
+					vb.customize ["modifyvm", :id, "--usbehci", "off"]
+
+					if host["mem"] == "auto"
+						host = RbConfig::CONFIG['host_os']
+						# Give VM 1/4 system memory & access to all cpu cores on the host
+						if host =~ /darwin/
+							mem = `sysctl -n hw.memsize`.to_i / 1024 / 1024 / 4
+						elsif host =~ /linux/
+							mem = `grep 'MemTotal' /proc/meminfo | sed -e 's/MemTotal://' -e 's/ kB//'`.to_i / 1024 / 4
+						else # Windows - fixed value
+							mem = 1024
+						end
+						vb.memory = mem
+					else
+						 vb.memory = host["mem"]
+					end
+
+
+					if host["cpus"] == "auto"
+						host = RbConfig::CONFIG['host_os']
+						# Give VM 1/4 system memory & access to all cpu cores on the host
+						if host =~ /darwin/
+							cpus = `sysctl -n hw.ncpu`.to_i
+						elsif host =~ /linux/
+							cpus = `nproc`.to_i
+						else # Windows - fixed value
+							cpus = 2
+						end
+						vb.cpus   = cpus
+					else
+						vb.cpus   = host["cpus"]
+					end
+
+
+				end
+
+				# Networking
+
+				if host["private_network"]["ip_private"] && host["private_network"]["auto_config"]
+					node.vm.network "private_network",
+						ip:          host["private_network"]["ip_private"],
+						auto_config: host["private_network"]["auto_config"]
+				elsif host["private_network"]["ip_private"]
+					node.vm.network "private_network",
+						ip:     host["private_network"]["ip_private"]
+				else host["private_network"]["type"]
+					node.vm.network "private_network",
+						type: host["private_network"]["type"]
+				end
+
+				if defined? host["public_network"]["ip_public"]
+					if host["public_network"]["ip_public"] == "auto"
+						node.vm.network "public_network"
+					elsif host["public_network"]["ip_public"] == "true"
+						node.vm.network "public_network",
+							use_dhcp_assigned_default_route: true
+					elsif host["public_network"]["ip_public"] && host["public_network"]["bridge"]
+						node.vm.network "public_network",
+							ip:     host["public_network"]["ip_public"],
+							bridge: host["public_network"]["bridge"]
+					else
+						node.vm.network "public_network",
+							ip: host["public_network"]["ip_public"]
+					end
+				end
+
+				# Port Forwarding
+
+				if host["ports"]
+					host['ports'].each do |ports|
+						node.vm.network "forwarded_port",
+						guest: ports["guest"],
+						host: ports["host"],
+						auto_correct: true
+					end
+				end
+
+				# Synced folders
+
+				if host["sync_dir"]
+					host['sync_dir'].each do |sync_dir|
+						if sync_dir["owner"] && sync_dir["group"]
+							node.vm.synced_folder sync_dir["host"],
+							sync_dir["guest"],
+							owner: "#{sync_dir["owner"]}",
+							group: "#{sync_dir["group"]}",
+							mount_options:["dmode=#{sync_dir["dmode"]}",
+							"fmode=#{sync_dir["fmode"]}"],
+							create: true
+						else
+							node.vm.synced_folder sync_dir['host'],
+							sync_dir['guest'],
+							create: true
+						end
+					end
+				end
+
+				# Provisioning	
+
+				# Provisioning - Bash
+				if host["bash"]
+					node.vm.provision "shell", path: host["bash"]
+				end
+
+				node.vm.provision "file", source: "~/.ssh/id_rsa.pub", destination: "~/.ssh/me.pub"
+				node.vm.boot_timeout = 240
+
+				# Provisioning - Puppet
+				if host["puppet"]
+					node.vm.provision :puppet do |puppet|
+						puppet.module_path    = "puppet/modules"
+						puppet.manifests_path = "puppet/manifests"
+						puppet.manifest_file  = host["puppet"]
+					end
+				end
+
+				# Provisioning - Ansible
+				if host["ansible"]
+					node.vm.provision:ansible do |ansible|
+						if host["ansible"]["verbose"]
+							ansible.verbose = host["ansible"]["verbose"]
+						end
+						if host["ansible"]["playbook"]
+							ansible.playbook = host["ansible"]["playbook"]
+						end
+						if host["ansible"]["inventory_path"]
+							ansible.inventory_path = host["ansible"]["inventory_path"]
+						end
+						if host["ansible"]["host_key_checking"]
+							ansible.host_key_checking = host["ansible"]["host_key_checking"]
+						end
+						if host["ansible"]["limit"]
+							ansible.limit = host["ansible"]["limit"]
+						end
+					end
+					File.open('ansible/inventory' ,'w') do |f|
+						f.write "[vagrant]\n"
+						f.write "#{host["private_network"]["ip_private"]}\n"
+					end
+				end
+			end
+		end
+	end
+	
+	
+	
 end

@@ -1,0 +1,79 @@
+ï»¿---
+# | ----------------------------------------------------------------------------
+# | Default configuration
+# | ----------------------------------------------------------------------------
+local_domain : &local_domain    'local'
+private_ip   : &private_ip      '10.10.10.10'
+machine_name : &machine_name    'centos7'
+machine_mem  : &machine_mem     '1024' # auto, 1024
+machine_cpu  : &machine_cpu     '1' # auto, 1
+vagrant_box  : &vagrant_box     'centos/7'
+
+# | ----------------------------------------------------------------------------
+# | ### Config VirtualBox VM
+# | ----------------------------------------------------------------------------
+
+domain               : *local_domain
+
+hosts:
+  - name               : *machine_name
+    box                : *vagrant_box
+    # box_version        : 201708.22.0
+    box_check_update   : false
+    mem                : *machine_mem
+    cpus               : *machine_cpu
+
+    # |· Configure networking
+    private_network :
+      # | Option 1 - Specify a static IP address for the machine
+      ip_private       : *private_ip
+      # | Option 2 - If you want to manually configure the network interface
+      # | yourself, you can disable Vagrant's auto-configure feature.
+      # auto_config      : false
+      # | Option 3 - The easiest way to use a private network is to allow the IP
+      # | to be assigned via DHCP.
+      # type             : dhcp
+    public_network :
+      # | Option 1 - Static IP bridge
+      # ip_public        : 192.168.0.70
+      # | Option 2 - Basic Config public_network
+      # ip_public        : auto
+      # | Option 3 - Using the DHCP Assigned Default Route
+      # ip_public        : true
+      # | Option 4 - Static IP select bridge
+      # ip_public        : 192.168.0.70
+      # bridge           : 'eth0'
+
+
+    # | Configure Port Forwarding
+    ports :
+      - guest          : 8080
+        host           : 8080
+    # - guest          : 8088
+    #   host           : 8088
+
+    # | Configure Synced folders
+    sync_dir :
+      - host           : share
+        guest          : /home/vagrant/share
+        dmode          : 766
+        fmode          : 766
+
+  # | Configure Ansible provisioning
+    # ansible :
+    #   verbose          : v
+    #   playbook         : ansible/playbook.yaml
+    #   inventory_path   : ansible/inventory
+    #   host_key_checking: false
+    #   limit            : all
+
+    # |  GUI
+    # gui              : true
+
+    # |  Bash provisioning
+    bash             : bash/init.sh
+
+    # |  Puppet provisioning
+      # puppet           : init.pp
+
+# ----------------------------------------------------------------------------
